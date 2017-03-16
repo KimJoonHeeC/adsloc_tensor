@@ -25,8 +25,92 @@ detector_list = ['KIN20701001','KIN20701002','KIN20701003','KIN20701004','KIN207
 
 RSSI_default = [-999]*40
 
+def preprocessing(data, tg_dt):        # for learning process
+    list_for_regression = []
+    make_exception = []
+    time_max = tg_dt
 
-def do_filter_data(data, tg_dt):
+    for i in range(0, len(data)):
+        if (i in make_exception) == True:
+            continue
+        list_for_single_data = [data[i]['deviceData']['identifier'], data[i]['detectorData']['serial']]
+        list_for_single_data.append([data[i]['receivedDate'] / 1000, float(data[i]['rssi'])])
+        for j in range(i + 1, len(data)):
+            if data[i]['deviceData']['identifier'] == data[j]['deviceData']['identifier'] and \
+                            data[i]['detectorData']['serial'] == data[j]['detectorData']['serial']:
+                list_for_single_data.append([data[j]['receivedDate'] / 1000, float(data[j]['rssi'])])
+                make_exception.append(j)
+        list_for_regression.append(list_for_single_data)
+
+    list_exert_on_tf = []
+
+    for k in range(0, len(list_for_regression)):
+        # print(list_for_regression[k])
+        # coordinates = np.array(sorted(list_for_regression[k][2:]))
+        coordinates = np.array(list_for_regression[k][2:])
+
+        if len(coordinates) > 3:
+            x_origin = coordinates[:, 0]
+            y_origin = coordinates[:, 1]
+            x = x_origin[-3:]
+            y = y_origin[-3:]
+
+        else:
+            x = coordinates[:, 0]
+            y = coordinates[:, 1]
+
+        z = np.polyfit(x, y, len(x) - 1)
+        f = np.poly1d(z)
+
+        x_new = np.linspace(min(x) - 1, time_max, (time_max - (min(x) - 1)) / 0.5)
+        numsteps = int((time_max - (min(x) - 1)) / 0.5)
+
+        y_new = f(x_new)
+
+        A = np.matrix([1])          # state transition matrix
+        H = np.matrix([1])          # control matrix
+        B = np.matrix([0])          # observation matrix
+        Q = np.matrix([0.003])      # estimated error in process (so supposed to be fixed)
+        R = np.matrix([0.05])        # estimated error in measurements (measurement term is larger than learning term)
+        xhat = np.matrix([y[0] * (1 - 0.4 * (np.random.rand(1) - 0.5))])
+        P = np.matrix([1])          # initial covariance estimate
+
+        filter = KalmanFilterLinear(A, B, H, xhat, P, Q, R)
+        rssimeter = RSSImeter(1.20, 0.20)
+
+        measuredRSSI = []
+        kalmanRSSI = []
+
+        for l in range(max(0, numsteps - 50), numsteps):
+            measured = y_new[l]
+            measuredRSSI.append(measured)
+            kalmanRSSI.append(filter.GetCurrentState()[0, 0])
+            filter.Step(np.matrix([0]), np.matrix([measured]))
+        time_str = datetime.fromtimestamp(tg_dt).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        list_exert_on_tf.append([list_for_regression[k][0], list_for_regression[k][1], kalmanRSSI[-1], time_str])
+
+    pre_tf_data = []
+    skip_list = []
+
+    for m in range(0, len(list_exert_on_tf)):
+        if m in skip_list:
+            continue
+        one_beacon_data = [list_exert_on_tf[m][0], list_exert_on_tf[m][3]]
+        RSSI_list = RSSI_default
+
+        for n in range(m, len(list_exert_on_tf)):
+            if list_exert_on_tf[n][0] == one_beacon_data[0]:
+                RSSI_list[detector_list.index(list_exert_on_tf[n][1])] = list_exert_on_tf[n][2]
+                skip_list.append(n)
+            else:
+                continue
+        RSSI = np.array(RSSI_list)
+        one_beacon_data.append(RSSI)
+        pre_tf_data.append(one_beacon_data)
+
+    return pre_tf_data
+
+def do_filter_data(data, tg_dt):        # for location measurement
     list_for_regression = []
     make_exception = []
     time_max = tg_dt
@@ -68,13 +152,13 @@ def do_filter_data(data, tg_dt):
 
         y_new = f(x_new)
 
-        A = np.matrix([1])
-        H = np.matrix([1])
-        B = np.matrix([0])
-        Q = np.matrix([0.003])
-        R = np.matrix([0.2])
+        A = np.matrix([1])          # state transition matrix
+        H = np.matrix([1])          # control matrix
+        B = np.matrix([0])          # observation matrix
+        Q = np.matrix([0.003])      # estimated error in process (so supposed to be fixed)
+        R = np.matrix([0.2])        # estimated error in measurements (measurement term is larger than learning term)
         xhat = np.matrix([y[0] * (1 - 0.4 * (np.random.rand(1) - 0.5))])
-        P = np.matrix([1])
+        P = np.matrix([1])          # initial covariance estimate
 
         filter = KalmanFilterLinear(A, B, H, xhat, P, Q, R)
         rssimeter = RSSImeter(1.20, 0.20)
@@ -107,7 +191,6 @@ def do_filter_data(data, tg_dt):
                 continue
         RSSI = np.array(RSSI_list)
         one_beacon_data.append(RSSI)
-        # print(one_beacon_data)
         pre_tf_data.append(one_beacon_data)
 
     return pre_tf_data
@@ -148,11 +231,14 @@ def do_tensorflow_learning(data, pre_tf_data):
 
 
 def main_page(request):
+    """
     r_val = {'thisis': 'mainpage'}
 
     r = HttpResponse(content_type='application/json')
     r.write(json.dumps(r_val, indent=4))
     return r
+    """
+    return render(request, 'tensor_model/main_page.html', {})
 
 
 def insert_page(request):
@@ -214,7 +300,7 @@ def prelearning_page(request):
             time_list.append(data[i]['receivedDate'] / 1000)
         tg_dt = max(time_list)
 
-        filtered_data = do_filter_data(data, tg_dt)
+        filtered_data = preprocessing(data, tg_dt)
 
         listed_data = []
         for single_list in filtered_data:
@@ -247,7 +333,6 @@ def prelearning_page(request):
     r = HttpResponse(content_type='application/json')
     r.write(json.dumps(r_val, indent=4))
     return r
-
 
 # @ensure_csrf_cookie
 def data_page(request):
