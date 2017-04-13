@@ -15,15 +15,15 @@ from django.template.loader import render_to_string
 
 # Create your views here.
 
-detector_list = ['KIN20701001','KIN20701002','KIN20701003','KIN20701004','KIN20701005','KIN20701006',
-                 'KIN20701007','KIN20701008','KIN20701009','KIN20701010','KIN20701011','KIN20701012',
-                 'KIN20701013','KIN20701014','KIN20701015','KIN20701016','KIN20701017','KIN20701018',
-                 'KIN20701019','KIN20701020','KIN20701021','KIN20701022','KIN20701023','KIN20701024',
-                 'KIN20701025','KIN20701026','KIN20700001','KIN20700002','KIN20700003','KIN20700004',
-                 'KIN20700005','KIN20700006','KIN20700007','KIN20700008','KIN20700009','KIN20700010',
-                 'KIN20700011','KIN20700012','KIN20700013','KIN20700014']
+detector_list = ['KIN20701001', 'KIN20701002', 'KIN20701003', 'KIN20701004', 'KIN20701005', 'KIN20701006',
+                 'KIN20701007', 'KIN20701008', 'KIN20701009', 'KIN20701010', 'KIN20701011', 'KIN20701012',
+                 'KIN20701013', 'KIN20701014', 'KIN20701015', 'KIN20701016', 'KIN20701017', 'KIN20701018',
+                 'KIN20701019', 'KIN20701020', 'KIN20701021', 'KIN20701022', 'KIN20701023', 'KIN20701024',
+                 'KIN20701025', 'KIN20701026', 'KIN20700001', 'KIN20700002', 'KIN20700003', 'KIN20700004',
+                 'KIN20700005', 'KIN20700006', 'KIN20700007', 'KIN20700008', 'KIN20700009', 'KIN20700010',
+                 'KIN20700011', 'KIN20700012', 'KIN20700013', 'KIN20700014', 'KIN20700015', 'KIN20700016']
 
-RSSI_default = [-999]*40
+RSSI_default = [-999]*42
 
 def preprocessing(data, tg_dt):        # for learning process
     list_for_regression = []
@@ -134,11 +134,11 @@ def do_filter_data(data, tg_dt):        # for location measurement
         # coordinates = np.array(sorted(list_for_regression[k][2:]))
         coordinates = np.array(list_for_regression[k][2:])
 
-        if len(coordinates) > 8:
+        if len(coordinates) > 4:
             x_origin = coordinates[:, 0]
             y_origin = coordinates[:, 1]
-            x = x_origin[-8:]
-            y = y_origin[-8:]
+            x = x_origin[-4:]
+            y = y_origin[-4:]
 
         else:
             x = coordinates[:, 0]
@@ -156,12 +156,12 @@ def do_filter_data(data, tg_dt):        # for location measurement
         H = np.matrix([1])          # control matrix
         B = np.matrix([0])          # observation matrix
         Q = np.matrix([0.003])      # estimated error in process (so supposed to be fixed)
-        R = np.matrix([0.2])        # estimated error in measurements (measurement term is larger than learning term)
+        R = np.matrix([0.1])        # estimated error in measurements (measurement term is larger than learning term)
         xhat = np.matrix([y[0] * (1 - 0.4 * (np.random.rand(1) - 0.5))])
         P = np.matrix([1])          # initial covariance estimate
 
         filter = KalmanFilterLinear(A, B, H, xhat, P, Q, R)
-        rssimeter = RSSImeter(1.20, 0.20)
+        rssimeter = RSSImeter(1.10, 0.10)
 
         measuredRSSI = []
         kalmanRSSI = []
@@ -226,7 +226,7 @@ def do_tensorflow_learning(data, pre_tf_data):
         location_dict = dict((subjects[i], lists[i]) for i in range(0, len(lists)))
         location_data.append(location_dict)
 
-    print(location_data)
+    #print(location_data)
     return location_data
 
 
@@ -247,7 +247,7 @@ def insert_page(request):
     reader = codecs.getreader("utf-8")
     data = json.load(reader(request))
 
-    print(data)
+    #print(data)
 
     if data:
 
@@ -284,11 +284,11 @@ def insert_page(request):
 def prelearning_page(request):
     r_val = {}
 
-    print(request)
+    #print(request)
     reader = codecs.getreader("utf-8")
     data = json.load(reader(request))
 
-    print(data)
+    #print(data)
 
     if data:
 
@@ -329,7 +329,7 @@ def prelearning_page(request):
         r_val['status'] = 1
         r_val['error'] = 'received empty data'
 
-    # print(r_val)
+    #print(r_val)
     r = HttpResponse(content_type='application/json')
     r.write(json.dumps(r_val, indent=4))
     return r
