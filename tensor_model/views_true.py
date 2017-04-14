@@ -23,6 +23,7 @@ detector_list = ['KIN20701001', 'KIN20701002', 'KIN20701003', 'KIN20701004', 'KI
                  'KIN20700005', 'KIN20700006', 'KIN20700007', 'KIN20700008', 'KIN20700009', 'KIN20700010',
                  'KIN20700011', 'KIN20700012', 'KIN20700013', 'KIN20700014', 'KIN20700015', 'KIN20700016']
 
+RSSI_default = [-999]*42
 
 def preprocessing(data, tg_dt):        # for learning process
     list_for_regression = []
@@ -75,7 +76,7 @@ def preprocessing(data, tg_dt):        # for learning process
         P = np.matrix([1])          # initial covariance estimate
 
         filter = KalmanFilterLinear(A, B, H, xhat, P, Q, R)
-        rssimeter = RSSImeter(1.20, 0.20)
+        rssimeter = RSSImeter(1.10, 0.10)
 
         measuredRSSI = []
         kalmanRSSI = []
@@ -96,8 +97,7 @@ def preprocessing(data, tg_dt):        # for learning process
         if m in skip_list:
             continue
         one_beacon_data = [list_exert_on_tf[m][0], list_exert_on_tf[m][3]]
-        #RSSI_list = RSSI_default
-        RSSI_list = [-999]*42   # fix the default value
+        RSSI_list = RSSI_default
 
         for n in range(m, len(list_exert_on_tf)):
             if list_exert_on_tf[n][0] == one_beacon_data[0]:
@@ -159,12 +159,12 @@ def do_filter_data(data, tg_dt):        # for location measurement
         H = np.matrix([1])          # control matrix
         B = np.matrix([0])          # observation matrix
         Q = np.matrix([0.003])      # estimated error in process (so supposed to be fixed)
-        R = np.matrix([0.1])        # estimated error in measurements (measurement term is larger than learning term)
+        R = np.matrix([0.2])        # estimated error in measurements (measurement term is larger than learning term)
         xhat = np.matrix([y[0] * (1 - 0.4 * (np.random.rand(1) - 0.5))])
         P = np.matrix([1])          # initial covariance estimate
 
         filter = KalmanFilterLinear(A, B, H, xhat, P, Q, R)
-        rssimeter = RSSImeter(1.10, 0.10)
+        rssimeter = RSSImeter(1.20, 0.20)
 
         measuredRSSI = []
         kalmanRSSI = []
@@ -262,7 +262,7 @@ def insert_page(request):
         # tg_dt_str = max(time_list)
         # tg_dt = datetime.strptime(tg_dt_str, "%Y-%m-%d %H:%M:%S")
         tg_dt = max(time_list)
-        print(tg_dt)
+        #print(tg_dt)
 
         filtered_data = do_filter_data(data, tg_dt)
         learned_data = do_tensorflow_learning(data, filtered_data)

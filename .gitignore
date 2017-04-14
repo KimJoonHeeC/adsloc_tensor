@@ -6,3 +6,4 @@ include
 share
 bin
 .idea
+views_true.py
