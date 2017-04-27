@@ -11,6 +11,7 @@ from tensor_model.kalmanfilter import *
 from tensor_model.tensorflow_models import *
 
 import numpy as np
+import warnings
 from django.template.loader import render_to_string
 
 # Create your views here.
@@ -23,13 +24,18 @@ detector_list = ['KIN20701001', 'KIN20701002', 'KIN20701003', 'KIN20701004', 'KI
                  'KIN20700005', 'KIN20700006', 'KIN20700007', 'KIN20700008', 'KIN20700009', 'KIN20700010',
                  'KIN20700011', 'KIN20700012', 'KIN20700013', 'KIN20700014', 'KIN20700015', 'KIN20700016']
 
+RSSI_default = [-999] * 42  # fix the default value
 
 def preprocessing(data, tg_dt):        # for learning process
     list_for_regression = []
     make_exception = []
     time_max = tg_dt
 
+    warnings.simplefilter('ignore', np.RankWarning)
+    print("at %s, the # of data: %d" % (datetime.now(), len(data)))
+
     for i in range(0, len(data)):
+        #print(data[i]['receivedDate'])
         if (i in make_exception) == True:
             continue
         list_for_single_data = [data[i]['deviceData']['identifier'], data[i]['detectorData']['serial']]
@@ -45,14 +51,14 @@ def preprocessing(data, tg_dt):        # for learning process
 
     for k in range(0, len(list_for_regression)):
         #print(list_for_regression[k])
-        # coordinates = np.array(sorted(list_for_regression[k][2:]))
+        #coordinates = np.array(sorted(list_for_regression[k][2:]))
         coordinates = np.array(list_for_regression[k][2:])
 
-        if len(coordinates) > 3:
+        if len(coordinates) >= 3:
             x_origin = coordinates[:, 0]
             y_origin = coordinates[:, 1]
-            x = x_origin[-3:]
-            y = y_origin[-3:]
+            x = x_origin[-1:]
+            y = y_origin[-1:]
 
         else:
             x = coordinates[:, 0]
@@ -61,8 +67,8 @@ def preprocessing(data, tg_dt):        # for learning process
         z = np.polyfit(x, y, len(x) - 1)
         f = np.poly1d(z)
 
-        x_new = np.linspace(min(x) - 1, time_max, (time_max - (min(x) - 1)) / 0.5)
-        numsteps = int((time_max - (min(x) - 1)) / 0.5)
+        x_new = np.linspace(min(x) - 1, time_max, (time_max - (min(x) - 1)))
+        numsteps = int((time_max - (min(x) - 1)))
 
         y_new = f(x_new)
 
@@ -71,11 +77,11 @@ def preprocessing(data, tg_dt):        # for learning process
         B = np.matrix([0])          # observation matrix
         Q = np.matrix([0.003])      # estimated error in process (so supposed to be fixed)
         R = np.matrix([0.05])        # estimated error in measurements (measurement term is larger than learning term)
-        xhat = np.matrix([y[0] * (1 - 0.4 * (np.random.rand(1) - 0.5))])
+        xhat = np.matrix([y[0] * (1 - 0.1 * (np.random.rand(1) - 0.5))])
         P = np.matrix([1])          # initial covariance estimate
 
         filter = KalmanFilterLinear(A, B, H, xhat, P, Q, R)
-        rssimeter = RSSImeter(1.20, 0.20)
+        rssimeter = RSSImeter(1.00, 0.05)
 
         measuredRSSI = []
         kalmanRSSI = []
@@ -86,7 +92,7 @@ def preprocessing(data, tg_dt):        # for learning process
             kalmanRSSI.append(filter.GetCurrentState()[0, 0])
             filter.Step(np.matrix([0]), np.matrix([measured]))
         time_str = datetime.fromtimestamp(tg_dt).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        list_exert_on_tf.append([list_for_regression[k][0], list_for_regression[k][1], kalmanRSSI[-1], time_str])
+        list_exert_on_tf.append([list_for_regression[k][0], list_for_regression[k][1], round(kalmanRSSI[-1], 2), time_str])
 
     #print(list_exert_on_tf)
     pre_tf_data = []
@@ -95,19 +101,15 @@ def preprocessing(data, tg_dt):        # for learning process
     for m in range(0, len(list_exert_on_tf)):
         if m in skip_list:
             continue
-        one_beacon_data = [list_exert_on_tf[m][0], list_exert_on_tf[m][3]]
-        #RSSI_list = RSSI_default
-        RSSI_list = [-999]*42   # fix the default value
+        one_beacon_data = [list_exert_on_tf[m][0], list_exert_on_tf[m][3], RSSI_default[:]]     #slicing
 
         for n in range(m, len(list_exert_on_tf)):
             if list_exert_on_tf[n][0] == one_beacon_data[0]:
-                RSSI_list[detector_list.index(list_exert_on_tf[n][1])] = list_exert_on_tf[n][2]
+                one_beacon_data[2][detector_list.index(list_exert_on_tf[n][1])] = list_exert_on_tf[n][2]
                 skip_list.append(n)
             else:
                 continue
-        RSSI = np.array(RSSI_list)
-        one_beacon_data.append(RSSI)
-        #print(one_beacon_data)
+
         pre_tf_data.append(one_beacon_data)
 
     #print(pre_tf_data)
@@ -137,11 +139,11 @@ def do_filter_data(data, tg_dt):        # for location measurement
         # coordinates = np.array(sorted(list_for_regression[k][2:]))
         coordinates = np.array(list_for_regression[k][2:])
 
-        if len(coordinates) > 4:
+        if len(coordinates) >= 3:
             x_origin = coordinates[:, 0]
             y_origin = coordinates[:, 1]
-            x = x_origin[-4:]
-            y = y_origin[-4:]
+            x = x_origin[-2:]
+            y = y_origin[-2:]
 
         else:
             x = coordinates[:, 0]
@@ -150,8 +152,8 @@ def do_filter_data(data, tg_dt):        # for location measurement
         z = np.polyfit(x, y, len(x) - 1)
         f = np.poly1d(z)
 
-        x_new = np.linspace(min(x) - 1, time_max, (time_max - (min(x) - 1)) / 0.5)
-        numsteps = int((time_max - (min(x) - 1)) / 0.5)
+        x_new = np.linspace(min(x) - 1, time_max, (time_max - (min(x) - 1)))
+        numsteps = int((time_max - (min(x) - 1)))
 
         y_new = f(x_new)
 
@@ -164,7 +166,7 @@ def do_filter_data(data, tg_dt):        # for location measurement
         P = np.matrix([1])          # initial covariance estimate
 
         filter = KalmanFilterLinear(A, B, H, xhat, P, Q, R)
-        rssimeter = RSSImeter(1.10, 0.10)
+        rssimeter = RSSImeter(1.00, 0.25)
 
         measuredRSSI = []
         kalmanRSSI = []
@@ -175,7 +177,7 @@ def do_filter_data(data, tg_dt):        # for location measurement
             kalmanRSSI.append(filter.GetCurrentState()[0, 0])
             filter.Step(np.matrix([0]), np.matrix([measured]))
         time_str = datetime.fromtimestamp(tg_dt).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        list_exert_on_tf.append([list_for_regression[k][0], list_for_regression[k][1], kalmanRSSI[-1], time_str])
+        list_exert_on_tf.append([list_for_regression[k][0], list_for_regression[k][1], round(kalmanRSSI[-1], 2), time_str])
 
     pre_tf_data = []
     skip_list = []
@@ -183,17 +185,14 @@ def do_filter_data(data, tg_dt):        # for location measurement
     for m in range(0, len(list_exert_on_tf)):
         if m in skip_list:
             continue
-        one_beacon_data = [list_exert_on_tf[m][0], list_exert_on_tf[m][3]]
-        RSSI_list = RSSI_default
+        one_beacon_data = [list_exert_on_tf[m][0], list_exert_on_tf[m][3], RSSI_default[:]]
 
         for n in range(m, len(list_exert_on_tf)):
             if list_exert_on_tf[n][0] == one_beacon_data[0]:
-                RSSI_list[detector_list.index(list_exert_on_tf[n][1])] = list_exert_on_tf[n][2]
+                one_beacon_data[2][detector_list.index(list_exert_on_tf[n][1])] = list_exert_on_tf[n][2]
                 skip_list.append(n)
             else:
                 continue
-        RSSI = np.array(RSSI_list)
-        one_beacon_data.append(RSSI)
         pre_tf_data.append(one_beacon_data)
 
     return pre_tf_data
@@ -254,15 +253,11 @@ def insert_page(request):
 
     if data:
 
-        # 비콘 별로 필터링
-
         time_list = []
-        for i in range(0, len(data)):
+        for i in range(len(data)):
             time_list.append(data[i]['receivedDate'] / 1000)
-        # tg_dt_str = max(time_list)
-        # tg_dt = datetime.strptime(tg_dt_str, "%Y-%m-%d %H:%M:%S")
         tg_dt = max(time_list)
-        print(tg_dt)
+        # tg_dt = data[-1]['receivedDate'] / 1000
 
         filtered_data = do_filter_data(data, tg_dt)
         learned_data = do_tensorflow_learning(data, filtered_data)
@@ -270,14 +265,12 @@ def insert_page(request):
         r_val['status'] = 0
         r_val['error'] = None
 
-        # Tensor Flow 가동
-
     else:
         r_val['data'] = []
         r_val['status'] = 1
         r_val['error'] = 'received empty data'
 
-    # 최종 리턴
+    # return
 
     r = HttpResponse(content_type='application/json')
     r.write(json.dumps(r_val, indent=4))
@@ -295,13 +288,11 @@ def prelearning_page(request):
 
     if data:
 
-        # 비콘 별로 필터링
-
         time_list = []
         for i in range(len(data)):
-            #print(data[i], type(data[i]))
             time_list.append(data[i]['receivedDate'] / 1000)
         tg_dt = max(time_list)
+        #tg_dt = data[-1]['receivedDate'] / 1000
 
         filtered_data = preprocessing(data, tg_dt)
 
@@ -310,7 +301,7 @@ def prelearning_page(request):
             single_data = {}
             single_data['identifier'] = single_list[0]
             single_data['predictionDate'] = single_list[1]
-            RSSI_float = list(single_list[2])
+            RSSI_float = single_list[2]
             RSSI = []
 
             for num in range(0, len(detector_list)):
@@ -332,7 +323,6 @@ def prelearning_page(request):
         r_val['status'] = 1
         r_val['error'] = 'received empty data'
 
-    #print(r_val)
     r = HttpResponse(content_type='application/json')
     r.write(json.dumps(r_val, indent=4))
     return r

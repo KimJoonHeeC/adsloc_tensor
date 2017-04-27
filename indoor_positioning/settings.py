@@ -82,8 +82,8 @@ DATABASES = {
         'NAME': 'indoor_dev',       # or path to database file if using sqlite3
         'USER': 'indoor_user',      # not used with sqlite3
         'PASSWORD': 'indoor_pwd',    # not used with sqlite3
-        'HOST': 'localhost',        # set to empty string for localhost. hot used with sqlite3
-        'PORT': '',
+        'HOST': 'localhost',        # set to empty string for localhost. not used with sqlite3
+        'PORT': '5432',
     }
 }
 
